@@ -1,4 +1,4 @@
-﻿#######################################################################################################
+#######################################################################################################
 # This script resets the Windows update components and solves most of the Windows Update related      #
 # problems. If it fails in first attempt, make sure to run it again.                                  #
 #                                                                                                     #
@@ -6,9 +6,11 @@
 #                                                                                                     #
 # Author: Aslam Khan (https://windospc.com)                                                           #
 # Created: 05-Dec-2022                                                                                #
-# Modified: 05-Sep-2023                                                                               #
-# Version: 1.2.1                                                                                      #
+# Modified: 19-Sep-2023                                                                               #
+# Version: 1.2.3                                                                                      #
 # Changelog:                                                                                          #
+#  V1.2.3 => Added transcript to create a log file for script that can be read later.                 #
+#  V1.2.2 => Added fallback method to remove staged packages in case default method fails.            #
 #  V1.2.1 => Improved the script to remove staged windows packages from registry.                     #
 #  V1.2.0 => Added functionality to check for admin rights while running the script. Improved output. #
 #  V1.1.6 => Improved the Stop-WUSerivces function to avoid restarting of services automatically.     #
@@ -19,8 +21,12 @@
 #  V1.1.1 => Updated the script to clear the staged Windows packages.                                 #
 #######################################################################################################
 
+# Getting current Date Time
+$DateTime = Get-Date -Format 'dd-MM-yyyy_HH-mm-ss'
+
 # Setting current script version.
-$Version = "1.2.1"
+$Version = "1.2.3"
+$Modified = "19-Sep-2023"
 
 # Setting error action preference
 $ErrorActionPreference = 'Stop'
@@ -49,7 +55,7 @@ Function Start-WUServices {
             }
         }
     }
-    Write-Output "Services started successfully."
+    Write-Host "Services started successfully." -F DarkGreen
 }
 
 # Function to stop Windows Update related services
@@ -67,8 +73,7 @@ Function Stop-WUServices {
             Stop-Service -Name $Service -Force -NoWait -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 2
 			If ((Get-Service $Service).Status -ieq "stopped") {
-                Write-Host "[$Service]:" -F Cyan -NoNewLine
-				Write-Host " Service stopped successfully.`n"
+                Write-Host "[$Service]: Service stopped successfully.`n" -F DarkGreen
                 If ($Service -ilike "wuauserv" -or $Service -ilike "cryptsvc") {
                     Set-Service $Service -StartupType Disabled -ErrorAction SilentlyContinue
                 }
@@ -79,17 +84,17 @@ Function Stop-WUServices {
 					Try {
 						taskkill /f /pid $processID > $null
 						Set-Service $Service -StartupType Disabled -ErrorAction SilentlyContinue
-						Write-Host "[$Service]:" -F Cyan -NoNewLine
-						Write-Host " Service stopped successfully.`n"
+						Write-Host "[$Service]: Service stopped successfully.`n" -F DarkGreen
 					} Catch {
 						Write-Host $Error[0].Exception.Message.TrimEnd() -F Yellow -B Red
-						Write-Host "[$Service]: Unable to stop the service.`n`nStarting the services again." -F Yellow
+						Write-Host "[$Service]: Unable to stop the service.`n`nStarting the services again.`n" -F Yellow
 						Start-WUServices $Services
-						Write-Host "`nPlease try to run the script again..." -F Yellow -B Magenta
+						Write-Host "Please try to run the script again..." -F Yellow -B Magenta
+						Stop-Transcript
+						Start-Sleep -Seconds 3
 					}
 				} Else {
-					Write-Host "[$Service]:" -F Cyan -NoNewLine
-					Write-Host " Service stopped successfully.`n"
+					Write-Host "[$Service]: Service stopped successfully.`n" -F DarkGreen
 				}
             }
         }
@@ -113,9 +118,9 @@ Function Take-Ownership {
             $AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("Everyone","FullControl","ContainerInherit,Objectinherit","none","Allow")
             $Acl.AddAccessRule($AccessRule)
             Set-Acl $Path $Acl
-		    Write-Host "Successfully set the permissions for folder: $Path."
+		    Write-Host "Successfully set the permissions for folder: $Path." -F DarkGreen
 	    } Catch {
-		    Write-Host $Error[0].Exception.Message.TrimEnd() -F Red -B Black
+		    Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
 	    }
     } Else {
         # Setting permissions for the file.
@@ -127,9 +132,9 @@ Function Take-Ownership {
             $AccessRule = New-Object System.Security.AccessControl.FileSystemAccessRule("Everyone","FullControl","none","none","Allow")
             $Acl.AddAccessRule($AccessRule)
             Set-Acl $Path $Acl
-		    Write-Host "Successfully set the permissions for file: $Path."
+		    Write-Host "Successfully set the permissions for file: $Path." -F DarkGreen
 	    } Catch {
-		    Write-Host $Error[0].Exception.Message.TrimEnd() -F Red -B Black
+		    Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
 	    }
     }
 }
@@ -146,13 +151,13 @@ Function Take-RegOwnership {
     
     .EXAMPLES
     group BULTIN\Users takes full control of key and all subkeys
-    Take-Permissions "HKLM" "SOFTWARE\test"
+    Take-RegOwnership "HKLM" "SOFTWARE\test"
 
     group Everyone takes full control of key and all subkeys
-    Take-Permissions "HKLM" "SOFTWARE\test" "S-1-1-0"
+    Take-RegOwnership "HKLM" "SOFTWARE\test" "S-1-1-0"
 
     group Everyone takes full control of key WITHOUT subkeys
-    Take-Permissions "HKLM" "SOFTWARE\test" "S-1-1-0" $false
+    Take-RegOwnership "HKLM" "SOFTWARE\test" "S-1-1-0" $false
 #>
     param($rootKey, $key, [System.Security.Principal.SecurityIdentifier]$sid = 'S-1-5-32-545', $recurse = $true)
 
@@ -214,9 +219,14 @@ Function Take-RegOwnership {
 $ErrorActionPreference = 'SilentlyContinue'
 [console]::WindowWidth=105; 
 [console]::WindowHeight=35; 
-[console]::BufferWidth=[console]::WindowWidth
+# console]::BufferWidth=[console]::WindowWidth
 Clear-Host
 $ErrorActionPreference = 'Stop'
+
+# Starting transcript
+$ScriptPath = Split-Path -parent $MyInvocation.MyCommand.Path
+Remove-Item $ScriptPath\ResetWU-Log-*.log -Force -ErrorAction SilentlyContinue
+Start-Transcript -Path $ScriptPath\ResetWU-Log-$DateTime.log
 
 # Displaying the header message
 Write-Host "`n#######################################################################################################
@@ -227,7 +237,7 @@ Write-Host "`n##################################################################
 #                                                                                                     #
 # Author: Aslam Khan (https://windospc.com)                                                           #
 # Created: 05-Dec-2022                                                                                #
-# Modified: 05-Sep-2023                                                                               #
+# Modified: $Modified                                                                               #
 # Version: $Version                                                                                      #
 #######################################################################################################`n" -F Gray -B Black
 Start-Sleep -Seconds 2
@@ -238,21 +248,22 @@ If (!(New-Object Security.Principal.WindowsPrincipal([Security.Principal.Windows
 	Write-Host "| [Warning]: The script is not running with administrative rights!                                    |" -F Yellow -B Black
 	Write-Host "| Please start PowerShell with admin rights and run the script again.                                 |" -F Yellow -B Black
 	Write-Host "-------------------------------------------------------------------------------------------------------`n" -F Yellow -B Black
+	Stop-Transcript #-ErrorAction SilentlyContinue
 	Start-Sleep	5
 	Exit
 }
 
 # Step 1: Try to stop Windows Update Services.
-Write-Host "`n-------------------------------------------------------------------------------------------------------" -F Green -B Black
-Write-Host "| Stopping Windows Update Related Services.                                                           |" -F Green -B Black
-Write-Host "-------------------------------------------------------------------------------------------------------" -F Green -B Black
+Write-Host "`n-------------------------------------------------------------------------------------------------------
+| Stopping Windows Update Related Services.                                                           |
+-------------------------------------------------------------------------------------------------------" -F Yellow -B Black
 Stop-WUServices $Services
 # Start-Sleep -Seconds 3
 
 # Step 2: Clearing the Windows Update database folders
-Write-Host "`n-------------------------------------------------------------------------------------------------------" -F Green -B Black
-Write-Host "| Removing Windows Update Database folders.                                                           |" -F Green -B Black
-Write-Host "-------------------------------------------------------------------------------------------------------" -F Green -B Black
+Write-Host "`n-------------------------------------------------------------------------------------------------------
+| Removing Windows Update Database folders.                                                           |
+-------------------------------------------------------------------------------------------------------" -F Yellow -B Black
 Start-Sleep -Seconds 1
 $Folders = @("$env:WINDIR\SoftwareDistribution", "$env:WINDIR\System32\catroot2")
 ForEach ($Folder in $Folders) {
@@ -262,86 +273,82 @@ ForEach ($Folder in $Folders) {
 		# The folder exists, trying to remove it.
         Try {
             Remove-Item "$Folder*" -Recurse -Force #-ErrorAction Stop
-			Write-Host "[$FName]:" -F Cyan -NoNewLine
-			Write-Host " Cleared successfully.`n"
+			Write-Host "[$FName]: Cleared successfully.`n" -F DarkGreen
 		} Catch {
 			If ($Folder -like "*SoftwareDistribution*") {
-				Write-Host "[$FName]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
+				Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
 				Write-Host "[$FName]: Failed to clear the folder.`n" -F Yellow
 				Start-WUServices $Services
-				Write-Host "`nPlease try to run the script again.`n" -F Yellow -B Red
+				Write-Host "Please try to run the script again." -F Yellow -B Red
+				Stop-Transcript
+				Start-Sleep -Seconds 3
 				Exit
 			} Else {
-				Write-Host "[$FName]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
+				Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
 				Write-Host "[$FName]: Failed to clear the folder.`nMoving on.`n" -F Yellow
 			}
 		}
     } Else {
 		# The folder doesn't exist, no need to remove it.
-		Write-Host "[$FName]:" -F Cyan -NoNewLine
-		Write-Host " Cleared successfully.`n"
+		Write-Host "[$FName]: Cleared successfully.`n" -F DarkGreen
 	}
 }
 
 # Step 3: Removing QMGR data files
-Write-Host "`n-------------------------------------------------------------------------------------------------------" -F Green -B Black
-Write-Host "| Removing QMGR Data files.                                                                           |" -F Green -B Black
-Write-Host "-------------------------------------------------------------------------------------------------------" -F Green -B Black
+Write-Host "`n-------------------------------------------------------------------------------------------------------
+| Removing QMGR Data files.                                                                           |
+-------------------------------------------------------------------------------------------------------" -F Yellow -B Black
 Start-Sleep -Seconds 1
 Try {
 	Remove-Item "$env:ALLUSERSPROFILE\Application Data\Microsoft\Network\Downloader\qmgr*.dat" -Force
 	Remove-Item "$env:ALLUSERSPROFILE\Microsoft\Network\Downloader\qmgr*.dat" -Force
-	Write-Host "[QMGR]:" -F Cyan -NoNewLine
-	Write-Host " Successfully removed old QMGR data files.`n"
+	Write-Host "[QMGR]: Successfully removed old QMGR data files.`n" -F DarkGreen
 } Catch {
-	Write-Host $Error[0].Exception.Message.TrimEnd() -F Red -B Black
+	Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
 	Write-Host "[QMGR]: Failed to remove the QMGR data files. Moving on.`n" -F Yellow
 }
 
 # Step 4: Removing pending XML
-Write-Host "`n-------------------------------------------------------------------------------------------------------" -F Green -B Black
-Write-Host "| Removing Pending.xml file.                                                                          |" -F Green -B Black
-Write-Host "-------------------------------------------------------------------------------------------------------" -F Green -B Black
+Write-Host "`n-------------------------------------------------------------------------------------------------------
+| Removing Pending.xml file.                                                                          |
+-------------------------------------------------------------------------------------------------------" -F Yellow -B Black
 Start-Sleep -Seconds 1
 $File = "$env:SystemRoot\WinSxS\pending.xml"
 If(Test-Path $File) {
 	Try {
 		Take-Ownership $File
 		Remove-Item $File -Force
-		Write-Host "[Pending.xml]:" -F Cyan -NoNewLine
-		Write-Host " Successfully removed the pending XML file.`n"
+		Write-Host "[Pending.xml]: Successfully removed the pending XML file.`n" -F DarkGreen
 	} Catch {
-		Write-Host "[Pending.xml]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
+		Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
+		Write-Host "[Pending.xml]: Failed to remove the pending.xml file. Moving on.`n" -F Yellow
 	}
 } Else {
-	Write-Host "[Pending.xml]:" -F Cyan -NoNewLine
-	Write-Host " Pending XML file not present. Moving on.`n"
+	Write-Host "[Pending.xml]: Pending XML file not present. Moving on.`n" -F DarkGreen
 }
 
 # Step 5: Removing old Windows Update log
-Write-Host "`n-------------------------------------------------------------------------------------------------------" -F Green -B Black
-Write-Host "| Removing old Windows Update log file.                                                               |" -F Green -B Black
-Write-Host "-------------------------------------------------------------------------------------------------------" -F Green -B Black
+Write-Host "`n-------------------------------------------------------------------------------------------------------
+| Removing old Windows Update log file.                                                               |
+-------------------------------------------------------------------------------------------------------" -F Yellow -B Black
 Start-Sleep -Seconds 1
 If (Test-Path "$env:SystemRoot\WindowsUpdate.log") {
 	Try {
 		Remove-Item $env:SystemRoot\WindowsUpdate.log -Force #-ErrorAction Stop
-		Write-Host "[WindowsUpdate.log]:" -F Cyan -NoNewLine
-		Write-Host " Successfully removed the log file.`n"
+		Write-Host "[WindowsUpdate.log]: Successfully removed the log file.`n" -F DarkGreen
 	} Catch {
-		Write-Host $Error[0].Exception.Message.TrimEnd() -F Red -B Black
+		Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
 		Write-Host "[WindowsUpdate.log]: Failed to remove the log file. Moving on.`n" -F Yellow
 	}
 } Else {
-	Write-Host "[WindowsUpdate.log]:" -F Cyan -NoNewLine
-	Write-Host " Log file does not exist. Moving on.`n"
+	Write-Host "[WindowsUpdate.log]: Log file does not exist. Moving on.`n" -F DarkGreen
 }
 	
 
 # Step 6: Resetting Windows Update services secuirty descriptors
-Write-Host "`n-------------------------------------------------------------------------------------------------------" -F Green -B Black
-Write-Host "| Resetting the Windows Update services security descriptors.                                         |" -F Green -B Black
-Write-Host "-------------------------------------------------------------------------------------------------------" -F Green -B Black
+Write-Host "`n-------------------------------------------------------------------------------------------------------
+| Resetting the Windows Update services security descriptors.                                         |
+-------------------------------------------------------------------------------------------------------" -F Yellow -B Black
 Start-Sleep -Seconds 1
 Try {
 	"sc.exe sdset bits D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;AU)(A;;CCLCSWRPWPDTLOCRRC;;;PU)" > $null
@@ -350,17 +357,16 @@ Try {
 	"sc.exe sdset bits D:(A;;CCLCSWLOCRRC;;;AU)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCDCLCSWRPWPDTLCRSDRCWDWO;;;SO)(A;;CCLCSWRPWPDTLOCRRC;;;SY)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;WD)"
 	"sc.exe sdset cryptsvc D:(A;;CCLCSWLOCRRC;;;AU)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCDCLCSWRPWPDTLCRSDRCWDWO;;;SO)(A;;CCLCSWRPWPDTLOCRRC;;;SY)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;WD)"
 	"sc.exe sdset trustedinstaller D:(A;;CCLCSWLOCRRC;;;AU)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCDCLCSWRPWPDTLCRSDRCWDWO;;;SO)(A;;CCLCSWRPWPDTLOCRRC;;;SY)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;WD)" #>
-	Write-Host "[SDSET]:" -F Cyan -NoNewLine
-	Write-Host " Successfully reset the security descriptors of Windows Update Services.`n"
+	Write-Host "[SDSET]: Successfully reset the security descriptors of Windows Update Services.`n" -F DarkGreen
 } Catch {
-	Write-Host $Error[0].Exception.Message.TrimEnd() -F Red -B Black
+	Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
 	Write-Host "[SDSET]: Failed to reset WU services secuirty descriptors. Moving on.`n" -F Yellow
 }
 
 # Step 7: Registring Windows update DLLs again.
-Write-Host "`n-------------------------------------------------------------------------------------------------------" -F Green -B Black
-Write-Host "| Registering Windows Update DLLs again.                                                              |" -F Green -B Black
-Write-Host "-------------------------------------------------------------------------------------------------------" -F Green -B Black
+Write-Host "`n-------------------------------------------------------------------------------------------------------
+| Registering Windows Update DLLs again.                                                              |
+-------------------------------------------------------------------------------------------------------" -F Yellow -B Black
 Start-Sleep -Seconds 1
 #Set-Location $env:systemroot\system32
 Try {
@@ -400,31 +406,29 @@ Try {
 	regsvr32.exe /s wucltux.dll
 	regsvr32.exe /s muweb.dll
 	regsvr32.exe /s wuwebv.dll
-	Write-Host "[Regsvr32]:" -F Cyan -NoNewLine
-	Write-Host " Successfully registered Windows Update DLLs.`n"
+	Write-Host "[Regsvr32]: Successfully registered Windows Update DLLs.`n" -F DarkGreen
 } Catch {
-	Write-Host $Error[0].Exception.Message.TrimEnd() -F Red -B Black
+	Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
 	Write-Host "[Regsvr32]: Failed to re-register the Windows update DLLs. Moving on.`n" -F Yellow
 }
 
 # Step 8: Deleting all BITS jobs.
-Write-Host "`n-------------------------------------------------------------------------------------------------------" -F Green -B Black
-Write-Host "| Deleting all BITS jobs.                                                                             |" -F Green -B Black
-Write-Host "-------------------------------------------------------------------------------------------------------" -F Green -B Black
+Write-Host "`n-------------------------------------------------------------------------------------------------------
+| Deleting all BITS jobs.                                                                             |
+-------------------------------------------------------------------------------------------------------" -F Yellow -B Black
 Start-Sleep -Seconds 1
 Try {
 	Get-BitsTransfer | Remove-BitsTransfer
-	Write-Host "[BITS]:" -F Cyan -NoNewLine
-	Write-HOst " Successfully removed the BITS jobs.`n"
+	Write-Host "[BITS]: Successfully removed the BITS jobs.`n" -F DarkGreen
 } Catch {
-	Write-Host $Error[0].Exception.Message.TrimEnd() -F Red -B Black
+	Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
 	Write-Host "[BITS]: Failed to delete the BITS jobs. Moving on.`n" -F Yellow
 }
 
 # Step 9: Removing Staged Windows Update packages causing Windows Update issue.
-Write-Host "`n-------------------------------------------------------------------------------------------------------" -F Green -B Black
-Write-Host "| Removing Staged Windows packages.                                                                   |" -F Green -B Black
-Write-Host "-------------------------------------------------------------------------------------------------------" -F Green -B Black
+Write-Host "`n-------------------------------------------------------------------------------------------------------
+| Removing Staged Windows packages.                                                                   |
+-------------------------------------------------------------------------------------------------------" -F Yellow -B Black
 Start-Sleep -Seconds 1
 $StgPkg = $null
 Try {
@@ -440,37 +444,43 @@ Try {
                 $PkgRegPath = "SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\Packages\$($Pkg.PackageName)"
                 If(Test-Path "HKLM:\$PkgRegPath") {
                     reg export "HKLM\$PkgRegPath" "C:\Temp\$($Pkg.PackageName).reg" /y > $null
-                    Write-Host "[StgPkg]:" -F Cyan -NoNewLine
-                    Write-Host " Registry key backup created: C:\Temp\$($Pkg.PackageName).reg"
+                    Write-Host "[StgPkg]: Registry key backup created: C:\Temp\$($Pkg.PackageName).reg" -F DarkGreen
                     Take-RegOwnership "HKLM" $PkgRegPath "S-1-1-0"
                     Remove-Item -Path "HKLM:\$PkgRegPath" -Force -Recurse
-	    			Write-Host "[StgPkg]:" -F Cyan -NoNewLine
-		    		Write-Host " Removed the package successfully.`n"
+	    			Write-Host "[StgPkg]: Removed the package successfully.`n" -F DarkGreen
                 } Else {
-                    Write-Host "[StgPkg]:" -F Cyan -NoNewLine
-		    		Write-Host " Registry entry for the package not found. Moving on.`n"
+                    Write-Host "[StgPkg]: Registry entry for the package not found. Moving on.`n"
                 }
 			} Catch {
-				Write-Host $Error[0].Exception.Message.TrimEnd() -F Red -B Black
-				Write-Host "[StgPkg]: Failed to remove the package.`n" -F Yellow
+				Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
+				Write-Host "[StgPkg]: Failed to remove the package normally. Trying the old ways." -F Yellow
+				Try {
+					Remove-WindowsPackage -PackageName $Pkg.PackageName -Online –NoRestart > $null
+					Write-Host "[StgPkg]: Removed the package successfully.`n" -F DarkGreen
+				} Catch {
+					Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
+					Write-Host "[StgPkg]: Failed to remove the package.`n" -F Yellow
+				}
 			}
 		}
 	} Else {
 		Write-Host "No Staged packages found. Moving on.`n"
 	}
 } Catch {
-	Write-Host "[StgPkg]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
+	Write-Host "[Error]:"$Error[0].Exception.Message.TrimEnd() -F Red -B Black
 	Write-Host "[StgPkg]: Failed to get the list of staged packages. Moving on.`n" -F Yellow
 }
 #Write-Host "Moving on."
 
 # Step 10: Starting Windows update services again.
-Write-Host "`n-------------------------------------------------------------------------------------------------------" -F Green -B Black
-Write-Host "| Starting Windows Update Related Services.                                                           |" -F Green -B Black
-Write-Host "-------------------------------------------------------------------------------------------------------" -F Green -B Black
+Write-Host "`n-------------------------------------------------------------------------------------------------------
+| Starting Windows Update Related Services.                                                           |
+-------------------------------------------------------------------------------------------------------" -F Yellow -B Black
 Start-Sleep -Seconds 1
 Start-WUServices $Services
-Write-Host "`nPlease restart the computer and check for Windows Updates again... `n`n" -F Yellow #-B Magenta
+Write-Host "`nPlease restart the computer and check for Windows Updates again...`n" -F Yellow #-B Magenta
 #Pause
+Stop-Transcript
+Start-Sleep -Seconds 3
 Exit
 ############################### Script END ######################################################################
