@@ -81,21 +81,21 @@ Function Stop-WUServices {
                 Write-Host "[$Service]: Service could not be stopped normally. Trying to stop the service forcefully." -F Yellow
                 $processID = (Get-WmiObject Win32_service | ? {$_.Name -eq $Service}).ProcessID
                 If($processID) {
-					Try {
-						taskkill /f /pid $processID > $null
-						Set-Service $Service -StartupType Disabled -ErrorAction SilentlyContinue
-						Write-Host "[$Service]: Service stopped successfully.`n" -F DarkGreen
-					} Catch {
-						Write-Host $Error[0].Exception.Message.TrimEnd() -F Yellow -B Red
-						Write-Host "[$Service]: Unable to stop the service.`n`nStarting the services again.`n" -F Yellow
-						Start-WUServices $Services
-						Write-Host "Please try to run the script again..." -F Yellow -B Magenta
-						Stop-Transcript
-						Start-Sleep -Seconds 3
-					}
-				} Else {
-					Write-Host "[$Service]: Service stopped successfully.`n" -F DarkGreen
-				}
+			Try {
+				taskkill /f /pid $processID > $null
+				Set-Service $Service -StartupType Disabled -ErrorAction SilentlyContinue
+				Write-Host "[$Service]: Service stopped successfully.`n" -F DarkGreen
+			} Catch {
+				Write-Host $Error[0].Exception.Message.TrimEnd() -F Yellow -B Red
+				Write-Host "[$Service]: Unable to stop the service.`n`nStarting the services again.`n" -F Yellow
+				Start-WUServices $Services
+				Write-Host "Please try to run the script again..." -F Yellow -B Magenta
+				Stop-Transcript
+				Start-Sleep -Seconds 3
+			}
+		} Else {
+			Write-Host "[$Service]: Service stopped successfully.`n" -F DarkGreen
+		}
             }
         }
     }
@@ -272,7 +272,7 @@ ForEach ($Folder in $Folders) {
 	If(Test-Path "$Folder*") {
 		# The folder exists, trying to remove it.
         Try {
-            Remove-Item "$Folder*" -Recurse -Force #-ErrorAction Stop
+            Remove-Item "$Folder*" -Recurse -Force -ErrorAction SilentlyContinue
 			Write-Host "[$FName]: Cleared successfully.`n" -F DarkGreen
 		} Catch {
 			If ($Folder -like "*SoftwareDistribution*") {
