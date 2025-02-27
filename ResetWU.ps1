@@ -1,32 +1,24 @@
-#######################################################################################################
-# This script resets the Windows update components and solves most of the Windows Update related      #
-# problems. If it fails in first attempt, make sure to run it again.                                  #
-#                                                                                                     #
-#    ! DISCLAIMER: This script is provided on 'AS IS' basis without any warranty. !                   #
-#                                                                                                     #
-# Author: Aslam Khan (https://windospc.com)                                                           #
-# Created: 05-Dec-2022                                                                                #
-# Modified: 19-Sep-2023                                                                               #
-# Version: 1.2.3                                                                                      #
-# Changelog:                                                                                          #
-#  V1.2.3 => Added transcript to create a log file for script that can be read later.                 #
-#  V1.2.2 => Added fallback method to remove staged packages in case default method fails.            #
-#  V1.2.1 => Improved the script to remove staged windows packages from registry.                     #
-#  V1.2.0 => Added functionality to check for admin rights while running the script. Improved output. #
-#  V1.1.6 => Improved the Stop-WUSerivces function to avoid restarting of services automatically.     #
-#  V1.1.5 => Changed the order of functions to avoid failing to clear SoftwareDistribution folder.    #
-#  V1.1.4 => Added function to remove pending.xml by taking ownership of the file.                    #
-#  V1.1.3 => Improved the error handling and message display.                                         #
-#  V1.1.2 => Added better error handling in the script.                                               #
-#  V1.1.1 => Updated the script to clear the staged Windows packages.                                 #
-#######################################################################################################
+<######################################################################################################
+This script resets the Windows update components and solves most of the Windows Update related
+problems. If it fails in first attempt, make sure to run it again.
+
+! DISCLAIMER: This script is provided on 'AS IS' basis without any warranty. !
+
+Author: Aslam Khan (https://windospc.com)
+Created: 25-Feb-2025
+Modified: 19-Sep-2023
+Version: 1.2.4
+Changelog:
+	=> 27-Feb-25: Suppress errors while deleting windows update database folders.
+	=> 02-Dec-23: Added transcript to create a log file for script that can be read later.
+######################################################################################################>
 
 # Getting current Date Time
 $DateTime = Get-Date -Format 'dd-MM-yyyy_HH-mm-ss'
 
 # Setting current script version.
-$Version = "1.2.3"
-$Modified = "19-Sep-2023"
+$Version = "1.2.4"
+$Modified = "27-Feb-2025"
 
 # Setting error action preference
 $ErrorActionPreference = 'Stop'
